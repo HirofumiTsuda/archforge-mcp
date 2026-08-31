@@ -36,5 +36,17 @@ def add_questions(questions: list[ReviewedQuestion]) -> dict[str, Any]:
     return {"added": len(questions), "bank_size": len(updated)}
 
 
+@mcp.tool
+def unattempted(domain: str | None = None) -> list[dict[str, Any]]:
+    """List unattempted questions, optionally restricted to one exam domain.
+
+    Each returned question includes `correct_indices` - the caller is the
+    one grading the user's answer in conversation, so it needs the answer
+    key. Don't reveal it to the user before they answer.
+    """
+    current = bank.load_bank()
+    return bank.unattempted(current, domain=domain)
+
+
 if __name__ == "__main__":
     mcp.run()
