@@ -116,3 +116,32 @@ async def test_unattempted_returns_empty_list_when_bank_is_empty():
         result = await client.call_tool("unattempted", {})
 
     assert result.data == []
+
+
+async def test_record_attempt_updates_bank_and_excludes_from_unattempted():
+    bank.add_questions([make_question()])
+    qid = bank.questions[0]["id"]
+
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "record_attempt", {"qid": qid, "given_indices": [0], "correct": True}
+        )
+        assert result.data == {"recorded": True}
+
+        remaining = await client.call_tool("unattempted", {})
+
+    assert remaining.data == []
+    bank.load()
+    attempts = bank.questions[0]["attempts"]
+    assert len(attempts) == 1
+    assert attempts[0]["given_indices"] == [0]
+    assert attempts[0]["correct"] is True
+
+
+async def test_record_attempt_unknown_qid_raises_tool_error():
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError):
+            await client.call_tool(
+                "record_attempt",
+                {"qid": "does-not-exist", "given_indices": [0], "correct": True},
+            )
