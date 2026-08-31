@@ -50,7 +50,7 @@
 - [x] 手動確認: 実際の`data/bank.json`に対して`add_questions`→`unattempted`を実行し、リファクタリング前と同じ結果になることを確認
 
 ## ストーリー4: 解答した結果をMCP経由で記録できる
-状態: 🔲 未着手
+状態: ✅ 完了（2026-08-31、自動テスト2件＋実際の`data/bank.json`への手動確認済み）
 
 **依存**: ストーリー1、2、3
 
@@ -58,10 +58,10 @@
 
 **DoD**: `record_attempt`ツールを`(qid, given_indices, correct)`で呼ぶと`bank.json`の`attempts`に追記される。存在しない`qid`を渡すと`ToolError`になる。
 
-- [ ] `record_attempt`ツール、`Bank.record_attempt`をラップ
-- [ ] `Bank.record_attempt`が投げる`KeyError`を`ToolError`に変換
-- [ ] 手動確認: 会話内で1問出題→回答→`record_attempt`→再度`unattempted`を呼び、対象問題が結果に含まれなくなっていることを確認
-- [ ] 手動確認: 存在しない`qid`で`record_attempt`を呼び、`ToolError`になることを確認する
+- [x] `record_attempt`ツール、`Bank.record_attempt`をラップ
+- [x] `Bank.record_attempt`が投げる`KeyError`を`ToolError`に変換（`add_questions`のスキーマ違反と違い、こちらはfastmcpが自動でやってくれないので`try/except`で明示的に変換する）
+- [x] 手動確認: 会話内で1問出題→回答→`record_attempt`→再度`unattempted`を呼び、対象問題が結果に含まれなくなっていることを確認
+- [x] 手動確認: 存在しない`qid`で`record_attempt`を呼び、`ToolError`になることを確認する
 
 ## ストーリー5: 自分の弱点ドメインを会話の中で知ることができる
 状態: 🔲 未着手

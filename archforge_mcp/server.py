@@ -10,6 +10,7 @@ this code.
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 
 from archforge_mcp.bank import Bank
 from archforge_mcp.config import BANK_PATH
@@ -43,6 +44,19 @@ def unattempted(domain: str | None = None) -> list[dict[str, Any]]:
     key. Don't reveal it to the user before they answer.
     """
     return bank.unattempted(domain=domain)
+
+
+@mcp.tool
+def record_attempt(qid: str, given_indices: list[int], correct: bool) -> dict[str, Any]:
+    """Record an attempt against a question by id.
+
+    Raises a tool error if `qid` doesn't match any question in the bank.
+    """
+    try:
+        bank.record_attempt(qid, given_indices, correct)
+    except KeyError as e:
+        raise ToolError(str(e)) from e
+    return {"recorded": True}
 
 
 if __name__ == "__main__":
