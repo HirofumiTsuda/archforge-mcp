@@ -30,10 +30,10 @@ def add_questions(questions: list[ReviewedQuestion]) -> dict[str, Any]:
     violation back to the caller as a tool error without touching the
     bank.
     """
-    current = bank.load_bank()
-    updated = bank.add_questions(current, [q.model_dump() for q in questions])
-    bank.save_bank(updated)
-    return {"added": len(questions), "bank_size": len(updated)}
+    bank.load()
+    bank.add_questions([q.model_dump() for q in questions])
+    bank.save()
+    return {"added": len(questions), "bank_size": len(bank.questions)}
 
 
 @mcp.tool
@@ -44,8 +44,8 @@ def unattempted(domain: str | None = None) -> list[dict[str, Any]]:
     one grading the user's answer in conversation, so it needs the answer
     key. Don't reveal it to the user before they answer.
     """
-    current = bank.load_bank()
-    return bank.unattempted(current, domain=domain)
+    bank.load()
+    return bank.unattempted(domain=domain)
 
 
 if __name__ == "__main__":

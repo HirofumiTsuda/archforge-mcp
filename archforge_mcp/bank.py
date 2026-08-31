@@ -1,5 +1,13 @@
 """Local JSON question bank. Generation (expensive, multi-agent) and practice
-(cheap, no API calls for grading) are decoupled through this file."""
+(cheap, no API calls for grading) are decoupled through this file.
+
+Stateful: a Bank instance holds its own `questions` list (populated by
+`load()`), instead of every method taking/returning it - so callers don't
+need to thread a `current` list through each call. Each caller (an MCP
+tool, the practice CLI) still calls `load()` at the start of its own
+operation and `save()` after mutating, so state always comes fresh from
+disk rather than trusting whatever another process wrote in the meantime.
+"""
 
 import json
 import os
@@ -13,34 +21,37 @@ Question = dict[str, Any]
 class Bank:
     def __init__(self, bank_path: str) -> None:
         self.bank_path = bank_path
+        self.questions: list[Question] = []
 
-    def load_bank(self) -> list[Question]:
+    def load(self) -> None:
         if not os.path.exists(self.bank_path):
-            return []
+            self.questions = []
+            return
         with open(self.bank_path, encoding="utf-8") as f:
-            return json.load(f)
+            self.questions = json.load(f)
 
-    def save_bank(self, bank: list[Question]) -> None:
+    def save(self) -> None:
         os.makedirs(os.path.dirname(self.bank_path), exist_ok=True)
         with open(self.bank_path, "w", encoding="utf-8") as f:
-            json.dump(bank, f, ensure_ascii=False, indent=2)
+            json.dump(self.questions, f, ensure_ascii=False, indent=2)
 
-    def add_questions(self, bank: list[Question], questions: list[Question]) -> list[Question]:
+    def add_questions(self, questions: list[Question]) -> None:
         now = datetime.now(timezone.utc).isoformat()
         for q in questions:
             q["id"] = uuid.uuid4().hex[:12]
             q["created_at"] = now
             q["attempts"] = []
-        bank.extend(questions)
-        return bank
+        self.questions.extend(questions)
 
-    def unattempted(self, bank: list[Question], domain: str | None = None) -> list[Question]:
-        return [q for q in bank if not q["attempts"] and (domain is None or q["domain"] == domain)]
+    def unattempted(self, domain: str | None = None) -> list[Question]:
+        return [
+            q
+            for q in self.questions
+            if not q["attempts"] and (domain is None or q["domain"] == domain)
+        ]
 
-    def record_attempt(
-        self, bank: list[Question], qid: str, given_indices: list[int], correct: bool
-    ) -> None:
-        for q in bank:
+    def record_attempt(self, qid: str, given_indices: list[int], correct: bool) -> None:
+        for q in self.questions:
             if q["id"] == qid:
                 q["attempts"].append(
                     {
@@ -52,9 +63,9 @@ class Bank:
                 return
         raise KeyError(f"question id not found in bank: {qid}")
 
-    def domain_stats(self, bank: list[Question]) -> dict[str, dict[str, int]]:
+    def domain_stats(self) -> dict[str, dict[str, int]]:
         stats: dict[str, dict[str, int]] = {}
-        for q in bank:
+        for q in self.questions:
             d = stats.setdefault(q["domain"], {"total": 0, "attempted": 0, "correct": 0})
             d["total"] += 1
             if q["attempts"]:

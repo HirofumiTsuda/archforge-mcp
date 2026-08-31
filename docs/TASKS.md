@@ -14,7 +14,7 @@
 **DoD**: MCPクライアントから`add_questions`ツールを問題リスト（ドメイン込み）で呼ぶと、`id`/`created_at`/空の`attempts`が付与された状態で`bank.json`に追記保存される。スキーマ違反（必須フィールド欠如・型不一致など）は`ToolError`として返り、バンクは書き換わらない。
 
 - [x] `archforge_mcp/server.py`: `from fastmcp import FastMCP`でサーバーインスタンスを作成するモジュールを新規作成
-- [x] `add_questions`ツール: 引数は`schema.ReviewedQuestion`のリスト（Pydanticでバリデーション）。内部で`Bank.load_bank` → `Bank.add_questions` → `Bank.save_bank`を呼ぶ
+- [x] `add_questions`ツール: 引数は`schema.ReviewedQuestion`のリスト（Pydanticでバリデーション）。内部で`Bank.load` → `Bank.add_questions` → `Bank.save`を呼ぶ
 - [x] Pydanticのバリデーションエラーを`fastmcp.exceptions.ToolError`に変換して返す（fastmcpが引数を型ヒントに対して自動検証し、失敗時に自前で`ToolError`を投げてくれるため、手動での変換コードは不要だった。実機確認済み）
 - [x] `if __name__ == "__main__": mcp.run()`でstdioサーバーとして起動できるようにする
 - [x] fastmcpのin-processクライアント（`Client(mcp)`）を使った`server.py`用の自動テストを書く（`test_server.py`、正常系2件＋スキーマ違反2件の計4件）
@@ -33,10 +33,26 @@
 - [x] `unattempted`ツール: `domain: str | None`引数、`Bank.unattempted`をラップ
 - [x] 返り値に正解を含める設計であることをツールのdocstringに明記する（会話内出題でエージェント自身が採点するために必要。ユーザーに早出ししない制御はエージェント側の振る舞いに委ねる）
 
-## ストーリー3: 解答した結果をMCP経由で記録できる
+## ストーリー3: Bankをステートフルなクラスにする（内部リファクタリング）
+状態: ✅ 完了（2026-08-31、`archforge-mcp`のみ対象。姉妹プロジェクト`archforge`の`bank.py`は据え置き）
+
+**依存**: なし。ユーザーから見える挙動（DoD）は変わらない純粋な内部リファクタリング
+
+**目的**: ストーリー1・2の実装で、`add_questions`/`unattempted`ツールがどちらも`current = bank.load_bank()` → 操作 → `bank.save_bank(current)`という同じ手順を毎回書く必要があった。今後のツール（`record_attempt`/`domain_stats`）でも同じ形が繰り返されるので、`Bank`に`self.questions`を持たせて状態を内包させ、呼び出し側が`current`を毎回持ち回さなくて済むようにする。
+
+**DoD**: `Bank`のメソッドが`load()`/`save()`/`add_questions(questions)`/`unattempted(domain=None)`/`record_attempt(qid, given_indices, correct)`/`domain_stats()`という、引数に`bank`/`current`のリストを取らないシグネチャになる。既存の全自動テスト（`test_bank.py`/`test_practice.py`/`test_server.py`）が新APIに合わせて書き直された上でパスし、実機の`data/bank.json`に対しても`add_questions`→`unattempted`が変わらず動くことを確認する。
+
+- [x] `bank.py`: `Bank.__init__`で`self.questions: list[Question] = []`を持たせ、各メソッドをステートフルな形に書き換える（`load_bank`→`load`、`save_bank`→`save`も改名）
+- [x] `server.py`: `add_questions`/`unattempted`ツールを新APIに合わせて書き換え（`bank.load()` → 操作 → `bank.save()`、`current`の受け渡しを削除）
+- [x] `practice.py`: `run_practice`を新APIに合わせて書き換え
+- [x] `test_bank.py`/`test_practice.py`/`test_server.py`を新APIに合わせて書き直す（`test_server.py`は複数テストで同じモジュール単位の`bank`を共有するため、`_isolated_bank`フィクスチャで`bank_path`の差し替えだけでなく`bank.load()`による状態リセットも行う）
+- [x] `uv run pytest`で全30件がパスすることを確認
+- [x] 手動確認: 実際の`data/bank.json`に対して`add_questions`→`unattempted`を実行し、リファクタリング前と同じ結果になることを確認
+
+## ストーリー4: 解答した結果をMCP経由で記録できる
 状態: 🔲 未着手
 
-**依存**: ストーリー1、2
+**依存**: ストーリー1、2、3
 
 **目的**: MCPクライアントとの会話の中で問題に答えたとき、その結果を`bank.json`に記録し、以後その問題が「未回答」として出題されないようにする。
 
@@ -47,10 +63,10 @@
 - [ ] 手動確認: 会話内で1問出題→回答→`record_attempt`→再度`unattempted`を呼び、対象問題が結果に含まれなくなっていることを確認
 - [ ] 手動確認: 存在しない`qid`で`record_attempt`を呼び、`ToolError`になることを確認する
 
-## ストーリー4: 自分の弱点ドメインを会話の中で知ることができる
+## ストーリー5: 自分の弱点ドメインを会話の中で知ることができる
 状態: 🔲 未着手
 
-**依存**: ストーリー3（意味のある集計には記録データが必要。バンクが空でも動作自体は落ちない）
+**依存**: ストーリー4（意味のある集計には記録データが必要。バンクが空でも動作自体は落ちない）
 
 **目的**: 「自分の弱点は？」とチャットで聞くと、ドメイン別正答率と本番の出題比率を踏まえた回答がもらえる。
 
@@ -59,7 +75,7 @@
 - [ ] `domain_stats`ツール、`Bank.domain_stats`をラップ
 - [ ] レスポンスに`config.DOMAINS`の重み情報も含める（エージェントが呼び出しのたびに正しい重みを覚えておく必要がないようにする）
 
-## ストーリー5: 毎回ブレない質で問題を生成してもらえる
+## ストーリー6: 毎回ブレない質で問題を生成してもらえる
 状態: 🔲 未着手
 
 **依存**: ストーリー1（生成結果を`add_questions`が要求するJSON構造に合わせる必要があるため）
@@ -77,12 +93,12 @@
 - [ ] 検討したが見送った項目: 合計N問を`config.DOMAINS`の重みでドメイン別に配分計算する専用ツール（archforgeの`_counts_per_domain`相当）。v1ではプロンプト内に重み表を埋め込み、配分計算自体はエージェントに委ねる。実際に配分が偏るようなら着手する
 - [ ] `schema.py`のコメントに残る`archforge`旧ストーリー番号の参照（"story 2's web_search generation"）、`practice.py`の"story 8"参照、`config.py`の（archforge-mcpにはまだ存在しない）`DESIGN.md`参照について、このプロジェクト自身のストーリー番号・実情に書き換えるか、移植時の経緯としてそのまま残すかを決めて反映する
 
-## ストーリー6: 会話の中で出題〜解答〜解説まで、追加のAPI課金なしで一気通貫にできる
+## ストーリー7: 会話の中で出題〜解答〜解説まで、追加のAPI課金なしで一気通貫にできる
 状態: 🔲 未着手
 
-**依存**: ストーリー2、3
+**依存**: ストーリー2、4
 
-**目的**: `archforge`では「解説を見る」に専用の`explain.py`と追加のAPI呼び出しが必要だった（ストーリー8相当、都度課金が発生する）。`archforge-mcp`では、出題しているエージェント自身がユーザーのClaude Pro/Maxサブスクリプションで動いているセッションそのものなので、`unattempted`で出題→ユーザーが回答→エージェントが`grounding_notes`を根拠にその場で正誤と解説を返す、という流れを**追加のAPI呼び出しを一切発生させずに**実現できる。これはこのアーキテクチャならではの価値なので独立したストーリーとして明示する。なお、解説の質（`grounding_notes`の具体性）自体はストーリー5のプロンプトテンプレートが左右するが、本ストーリーの`practice_session`プロンプトはストーリー5の成果物がなくても既存バンクの`grounding_notes`を使って動作するため、技術的な依存関係としては挙げていない。
+**目的**: `archforge`では「解説を見る」に専用の`explain.py`と追加のAPI呼び出しが必要だった（ストーリー8相当、都度課金が発生する）。`archforge-mcp`では、出題しているエージェント自身がユーザーのClaude Pro/Maxサブスクリプションで動いているセッションそのものなので、`unattempted`で出題→ユーザーが回答→エージェントが`grounding_notes`を根拠にその場で正誤と解説を返す、という流れを**追加のAPI呼び出しを一切発生させずに**実現できる。これはこのアーキテクチャならではの価値なので独立したストーリーとして明示する。なお、解説の質（`grounding_notes`の具体性）自体はストーリー6のプロンプトテンプレートが左右するが、本ストーリーの`practice_session`プロンプトはストーリー6の成果物がなくても既存バンクの`grounding_notes`を使って動作するため、技術的な依存関係としては挙げていない。
 
 **DoD**: Claude Codeに接続した状態で「出題して」と頼むと、`unattempted`→出題→ユーザー回答→`record_attempt`→（希望すれば）`grounding_notes`に基づく解説、という流れが1つの会話内で完結する。`practice_session`プロンプトがユーザー回答前に正解を明かさないことをエージェントへの指示として明記しており、実機確認でもその通りに振る舞うことを確認する（コードによる保証ではなく、プロンプト指示とその遵守の観測確認である点に注意）。
 
@@ -90,8 +106,8 @@
 - [ ] `practice_session`プロンプトの中で、`config.EXAM_NAME`/`DOMAINS`を踏まえた出題ドメインの選び方（省略時は全ドメインからランダム、指定時はそのドメインに絞る）も指示する
 - [ ] 実機（Claude Code接続）で「出題→誤答→解説→次の問題」を1周動作確認する
 
-## ストーリー7: MCPサーバーに接続していなくても、ローカルで問題を解いたり成績を確認できる
-状態: 🔶 一部実装（`practice.py`本体・`test_practice.py`は移植済みで単体テストは通る想定だが、実ターミナルでの動作確認は未実施。CLIエントリポイントとして呼べる状態にもなっていない。`stats`相当は未着手）
+## ストーリー8: MCPサーバーに接続していなくても、ローカルで問題を解いたり成績を確認できる
+状態: 🔶 一部実装（`practice.py`本体・`test_practice.py`はステートフルなBank API向けに移植・書き直し済みで単体テストは通る想定だが、実ターミナルでの動作確認は未実施。CLIエントリポイントとして呼べる状態にもなっていない。`stats`相当は未着手）
 
 **依存**: なし。MCPサーバーとは独立しており、`bank.json`というファイル形式だけを介して他ストーリーと関係する
 
@@ -103,10 +119,10 @@
 - [ ] 実機で`uv run python -m archforge_mcp practice`を一周動かし、出題・採点・`bank.json`への記録を目視確認する（自動テストは`input()`をmonkeypatchしているだけなので、実ターミナル入出力での確認はまだ済んでいない）
 - [ ] 実機で`stats`の表示を確認する
 
-## ストーリー8: Claude Code/DesktopにMCPサーバーとして接続してセットアップできる
+## ストーリー9: Claude Code/DesktopにMCPサーバーとして接続してセットアップできる
 状態: 🔲 未着手
 
-**依存**: ストーリー1〜6（接続して意味のあるツール・プロンプトが揃っていること）
+**依存**: ストーリー1〜7（接続して意味のあるツール・プロンプトが揃っていること）
 
 **目的**: 初めて使うユーザーが、READMEの手順どおりに進めるだけでClaude CodeまたはClaude DesktopにこのMCPサーバーを接続でき、追加のAPI課金なしで使い始められる。
 
@@ -114,7 +130,7 @@
 
 - [ ] `pyproject.toml`に起動コマンドが確定した後、READMEにClaude Code / Claude Desktop両方の接続設定例（`command`/`args`）を記載する
 - [ ] README: `uv sync`によるセットアップ手順
-- [ ] README: MCPサーバー（生成・保存・成績集計）とオフラインCLI（ストーリー7の`practice`/`stats`）という2つの使い方があることの説明
+- [ ] README: MCPサーバー（生成・保存・成績集計）とオフラインCLI（ストーリー8の`practice`/`stats`）という2つの使い方があることの説明
 - [ ] README: archforge同様、「非公式・AI生成の問題バンクである」旨の免責事項
 - [ ] 手動確認: Claude Codeから実際に接続し、4ツール+3プロンプトが見えることを確認する
 
