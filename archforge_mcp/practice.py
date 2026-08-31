@@ -30,8 +30,7 @@ def run_practice(bank: Bank, domain: str | None, count: int | None) -> None:
     at `count`), and for each: show it, take an answer, grade it, and
     record the attempt - saving after every question so a session
     interrupted partway through doesn't lose what was already answered."""
-    questions = bank.load_bank()
-    unattempted = bank.unattempted(questions, domain=domain)
+    unattempted = bank.unattempted(domain=domain)
 
     if not unattempted:
         print("No unattempted questions.")
@@ -53,5 +52,4 @@ def run_practice(bank: Bank, domain: str | None, count: int | None) -> None:
 
         print("Correct!" if correct else "Incorrect.")
 
-        bank.record_attempt(questions, question["id"], given_indices, correct)
-        bank.save_bank(questions)
+        bank.record_attempt(question["id"], given_indices, correct)

@@ -4,10 +4,6 @@ from archforge_mcp.bank import Bank
 from archforge_mcp.practice import parse_answer, run_practice
 
 
-def make_bank(tmp_path) -> Bank:
-    return Bank(bank_path=str(tmp_path / "bank.json"))
-
-
 def make_question(
     domain: str = "Agentic Architecture & Orchestration",
     correct_indices: list[int] | None = None,
@@ -39,10 +35,9 @@ def test_parse_answer(raw, expected):
 
 
 def test_run_practice_no_unattempted_questions_prints_and_returns(tmp_path, monkeypatch, capsys):
-    bank = make_bank(tmp_path)
-    questions = bank.add_questions([], [make_question()])
-    bank.record_attempt(questions, questions[0]["id"], [0], True)
-    bank.save_bank(questions)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
+    bank.add_questions([make_question()])
+    bank.record_attempt(bank.questions[0]["id"], [0], True)
 
     def fail_input(_prompt: str) -> str:
         raise AssertionError("input() should not be called when there is nothing to practice")
@@ -55,37 +50,36 @@ def test_run_practice_no_unattempted_questions_prints_and_returns(tmp_path, monk
 
 
 def test_run_practice_records_correct_attempt(tmp_path, monkeypatch):
-    bank = make_bank(tmp_path)
-    questions = bank.add_questions([], [make_question(correct_indices=[0])])
-    bank.save_bank(questions)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
+    bank.add_questions([make_question(correct_indices=[0])])
 
     monkeypatch.setattr("builtins.input", lambda _prompt: "A")
 
     run_practice(bank, domain=None, count=None)
 
-    saved = bank.load_bank()
-    assert len(saved[0]["attempts"]) == 1
-    assert saved[0]["attempts"][0]["correct"] is True
-    assert saved[0]["attempts"][0]["given_indices"] == [0]
+    reloaded = Bank(bank_path=bank.bank_path)
+    reloaded.load()
+    assert len(reloaded.questions[0]["attempts"]) == 1
+    assert reloaded.questions[0]["attempts"][0]["correct"] is True
+    assert reloaded.questions[0]["attempts"][0]["given_indices"] == [0]
 
 
 def test_run_practice_records_incorrect_attempt(tmp_path, monkeypatch):
-    bank = make_bank(tmp_path)
-    questions = bank.add_questions([], [make_question(correct_indices=[0])])
-    bank.save_bank(questions)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
+    bank.add_questions([make_question(correct_indices=[0])])
 
     monkeypatch.setattr("builtins.input", lambda _prompt: "B")
 
     run_practice(bank, domain=None, count=None)
 
-    saved = bank.load_bank()
-    assert saved[0]["attempts"][0]["correct"] is False
+    reloaded = Bank(bank_path=bank.bank_path)
+    reloaded.load()
+    assert reloaded.questions[0]["attempts"][0]["correct"] is False
 
 
 def test_run_practice_respects_count(tmp_path, monkeypatch):
-    bank = make_bank(tmp_path)
-    questions = bank.add_questions([], [make_question(), make_question(), make_question()])
-    bank.save_bank(questions)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
+    bank.add_questions([make_question(), make_question(), make_question()])
 
     calls = 0
 
@@ -99,54 +93,54 @@ def test_run_practice_respects_count(tmp_path, monkeypatch):
     run_practice(bank, domain=None, count=2)
 
     assert calls == 2
-    saved = bank.load_bank()
-    assert sum(len(q["attempts"]) for q in saved) == 2
+    reloaded = Bank(bank_path=bank.bank_path)
+    reloaded.load()
+    assert sum(len(q["attempts"]) for q in reloaded.questions) == 2
 
 
 def test_run_practice_respects_domain_filter(tmp_path, monkeypatch):
-    bank = make_bank(tmp_path)
-    questions = bank.add_questions(
-        [],
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
+    bank.add_questions(
         [
             make_question(domain="Tool Design & MCP Integration"),
             make_question(domain="Context Management & Reliability"),
-        ],
+        ]
     )
-    bank.save_bank(questions)
 
     monkeypatch.setattr("builtins.input", lambda _prompt: "A")
 
     run_practice(bank, domain="Tool Design & MCP Integration", count=None)
 
-    saved = bank.load_bank()
-    attempted = [q for q in saved if q["attempts"]]
+    reloaded = Bank(bank_path=bank.bank_path)
+    reloaded.load()
+    attempted = [q for q in reloaded.questions if q["attempts"]]
     assert len(attempted) == 1
     assert attempted[0]["domain"] == "Tool Design & MCP Integration"
 
 
 def test_run_practice_quits_on_q_without_recording_an_attempt(tmp_path, monkeypatch, capsys):
-    bank = make_bank(tmp_path)
-    questions = bank.add_questions([], [make_question(), make_question()])
-    bank.save_bank(questions)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
+    bank.add_questions([make_question(), make_question()])
 
     monkeypatch.setattr("builtins.input", lambda _prompt: "Q")
 
     run_practice(bank, domain=None, count=None)
 
     assert "Exiting." in capsys.readouterr().out
-    saved = bank.load_bank()
-    assert all(len(q["attempts"]) == 0 for q in saved)
+    reloaded = Bank(bank_path=bank.bank_path)
+    reloaded.load()
+    assert all(len(q["attempts"]) == 0 for q in reloaded.questions)
 
 
 def test_run_practice_quitting_midway_keeps_prior_attempts(tmp_path, monkeypatch):
-    bank = make_bank(tmp_path)
-    questions = bank.add_questions([], [make_question(), make_question(), make_question()])
-    bank.save_bank(questions)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
+    bank.add_questions([make_question(), make_question(), make_question()])
 
     answers = iter(["A", "Q"])
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
 
     run_practice(bank, domain=None, count=None)
 
-    saved = bank.load_bank()
-    assert sum(len(q["attempts"]) for q in saved) == 1
+    reloaded = Bank(bank_path=bank.bank_path)
+    reloaded.load()
+    assert sum(len(q["attempts"]) for q in reloaded.questions) == 1
