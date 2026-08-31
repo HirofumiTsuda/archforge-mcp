@@ -21,10 +21,12 @@ def make_question(domain: str = "Agentic Architecture & Orchestration") -> dict:
 @pytest.fixture(autouse=True)
 def _isolated_bank(tmp_path, monkeypatch):
     """Point the server's module-level `bank` at a throwaway file so tests
-    never touch the real data/bank.json, and reset its in-memory state -
-    `bank` is a single module-level object shared across every test."""
+    never touch the real data/bank.json. `bank` is a single module-level
+    object shared across every test, but every Bank operation reloads from
+    disk before acting, so leftover in-memory state from a previous test
+    never leaks in - it's overwritten as soon as anything touches this
+    (empty, fresh) path."""
     monkeypatch.setattr(bank, "bank_path", str(tmp_path / "bank.json"))
-    bank.load()
 
 
 async def test_add_questions_saves_to_bank():
@@ -75,7 +77,6 @@ async def test_add_questions_rejects_unknown_field():
 
 async def test_unattempted_returns_questions_with_correct_indices():
     bank.add_questions([make_question()])
-    bank.save()
 
     async with Client(mcp) as client:
         result = await client.call_tool("unattempted", {})
@@ -87,7 +88,6 @@ async def test_unattempted_returns_questions_with_correct_indices():
 async def test_unattempted_excludes_already_attempted_questions():
     bank.add_questions([make_question(), make_question()])
     bank.record_attempt(bank.questions[0]["id"], [0], True)
-    bank.save()
 
     async with Client(mcp) as client:
         result = await client.call_tool("unattempted", {})
@@ -103,7 +103,6 @@ async def test_unattempted_filters_by_domain():
             make_question(domain="Context Management & Reliability"),
         ]
     )
-    bank.save()
 
     async with Client(mcp) as client:
         result = await client.call_tool("unattempted", {"domain": "Tool Design & MCP Integration"})

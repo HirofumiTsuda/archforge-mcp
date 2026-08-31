@@ -4,12 +4,6 @@ from archforge_mcp.bank import Bank
 from archforge_mcp.practice import parse_answer, run_practice
 
 
-def make_bank(tmp_path) -> Bank:
-    bank = Bank(bank_path=str(tmp_path / "bank.json"))
-    bank.load()
-    return bank
-
-
 def make_question(
     domain: str = "Agentic Architecture & Orchestration",
     correct_indices: list[int] | None = None,
@@ -41,10 +35,9 @@ def test_parse_answer(raw, expected):
 
 
 def test_run_practice_no_unattempted_questions_prints_and_returns(tmp_path, monkeypatch, capsys):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions([make_question()])
     bank.record_attempt(bank.questions[0]["id"], [0], True)
-    bank.save()
 
     def fail_input(_prompt: str) -> str:
         raise AssertionError("input() should not be called when there is nothing to practice")
@@ -57,9 +50,8 @@ def test_run_practice_no_unattempted_questions_prints_and_returns(tmp_path, monk
 
 
 def test_run_practice_records_correct_attempt(tmp_path, monkeypatch):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions([make_question(correct_indices=[0])])
-    bank.save()
 
     monkeypatch.setattr("builtins.input", lambda _prompt: "A")
 
@@ -73,9 +65,8 @@ def test_run_practice_records_correct_attempt(tmp_path, monkeypatch):
 
 
 def test_run_practice_records_incorrect_attempt(tmp_path, monkeypatch):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions([make_question(correct_indices=[0])])
-    bank.save()
 
     monkeypatch.setattr("builtins.input", lambda _prompt: "B")
 
@@ -87,9 +78,8 @@ def test_run_practice_records_incorrect_attempt(tmp_path, monkeypatch):
 
 
 def test_run_practice_respects_count(tmp_path, monkeypatch):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions([make_question(), make_question(), make_question()])
-    bank.save()
 
     calls = 0
 
@@ -109,14 +99,13 @@ def test_run_practice_respects_count(tmp_path, monkeypatch):
 
 
 def test_run_practice_respects_domain_filter(tmp_path, monkeypatch):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions(
         [
             make_question(domain="Tool Design & MCP Integration"),
             make_question(domain="Context Management & Reliability"),
         ]
     )
-    bank.save()
 
     monkeypatch.setattr("builtins.input", lambda _prompt: "A")
 
@@ -130,9 +119,8 @@ def test_run_practice_respects_domain_filter(tmp_path, monkeypatch):
 
 
 def test_run_practice_quits_on_q_without_recording_an_attempt(tmp_path, monkeypatch, capsys):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions([make_question(), make_question()])
-    bank.save()
 
     monkeypatch.setattr("builtins.input", lambda _prompt: "Q")
 
@@ -145,9 +133,8 @@ def test_run_practice_quits_on_q_without_recording_an_attempt(tmp_path, monkeypa
 
 
 def test_run_practice_quitting_midway_keeps_prior_attempts(tmp_path, monkeypatch):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions([make_question(), make_question(), make_question()])
-    bank.save()
 
     answers = iter(["A", "Q"])
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))

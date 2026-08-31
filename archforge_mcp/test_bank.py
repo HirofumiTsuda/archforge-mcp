@@ -3,12 +3,6 @@ import pytest
 from archforge_mcp.bank import Bank
 
 
-def make_bank(tmp_path) -> Bank:
-    bank = Bank(bank_path=str(tmp_path / "bank.json"))
-    bank.load()
-    return bank
-
-
 def make_question(domain: str = "Agentic Architecture & Orchestration") -> dict:
     return {
         "scenario": "A team is designing a multi-agent pipeline.",
@@ -28,12 +22,10 @@ def test_load_missing_file_results_in_empty_questions(tmp_path):
     assert bank.questions == []
 
 
-def test_save_and_load_roundtrip(tmp_path):
+def test_add_questions_persists_to_disk(tmp_path):
     path = str(tmp_path / "bank.json")
     bank = Bank(bank_path=path)
-    bank.load()
     bank.add_questions([make_question()])
-    bank.save()
 
     reloaded = Bank(bank_path=path)
     reloaded.load()
@@ -41,7 +33,7 @@ def test_save_and_load_roundtrip(tmp_path):
 
 
 def test_add_questions_assigns_id_created_at_and_empty_attempts(tmp_path):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions([make_question(), make_question()])
 
     assert len(bank.questions) == 2
@@ -54,7 +46,7 @@ def test_add_questions_assigns_id_created_at_and_empty_attempts(tmp_path):
 
 
 def test_add_questions_extends_existing_bank(tmp_path):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions([make_question()])
     bank.add_questions([make_question()])
 
@@ -62,7 +54,7 @@ def test_add_questions_extends_existing_bank(tmp_path):
 
 
 def test_unattempted_returns_only_questions_without_attempts(tmp_path):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions([make_question(), make_question()])
     bank.record_attempt(bank.questions[0]["id"], [0], True)
 
@@ -73,7 +65,7 @@ def test_unattempted_returns_only_questions_without_attempts(tmp_path):
 
 
 def test_unattempted_filters_by_domain(tmp_path):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions(
         [
             make_question(domain="Tool Design & MCP Integration"),
@@ -88,7 +80,7 @@ def test_unattempted_filters_by_domain(tmp_path):
 
 
 def test_record_attempt_appends_attempt_with_expected_fields(tmp_path):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions([make_question()])
     qid = bank.questions[0]["id"]
 
@@ -102,7 +94,7 @@ def test_record_attempt_appends_attempt_with_expected_fields(tmp_path):
 
 
 def test_record_attempt_unknown_id_raises_key_error(tmp_path):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions([make_question()])
 
     with pytest.raises(KeyError):
@@ -110,7 +102,7 @@ def test_record_attempt_unknown_id_raises_key_error(tmp_path):
 
 
 def test_domain_stats_counts_total_attempted_and_correct_per_domain(tmp_path):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions(
         [
             make_question(domain="Agentic Architecture & Orchestration"),
@@ -137,7 +129,7 @@ def test_domain_stats_counts_total_attempted_and_correct_per_domain(tmp_path):
 
 
 def test_domain_stats_uses_most_recent_attempt(tmp_path):
-    bank = make_bank(tmp_path)
+    bank = Bank(bank_path=str(tmp_path / "bank.json"))
     bank.add_questions([make_question()])
     qid = bank.questions[0]["id"]
 

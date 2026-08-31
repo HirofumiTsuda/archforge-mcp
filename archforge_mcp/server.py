@@ -30,9 +30,7 @@ def add_questions(questions: list[ReviewedQuestion]) -> dict[str, Any]:
     violation back to the caller as a tool error without touching the
     bank.
     """
-    bank.load()
     bank.add_questions([q.model_dump() for q in questions])
-    bank.save()
     return {"added": len(questions), "bank_size": len(bank.questions)}
 
 
@@ -44,7 +42,6 @@ def unattempted(domain: str | None = None) -> list[dict[str, Any]]:
     one grading the user's answer in conversation, so it needs the answer
     key. Don't reveal it to the user before they answer.
     """
-    bank.load()
     return bank.unattempted(domain=domain)
 
 

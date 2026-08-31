@@ -2,11 +2,13 @@
 (cheap, no API calls for grading) are decoupled through this file.
 
 Stateful: a Bank instance holds its own `questions` list (populated by
-`load()`), instead of every method taking/returning it - so callers don't
-need to thread a `current` list through each call. Each caller (an MCP
-tool, the practice CLI) still calls `load()` at the start of its own
-operation and `save()` after mutating, so state always comes fresh from
-disk rather than trusting whatever another process wrote in the meantime.
+`load()`), instead of every method taking/returning it. Each of the four
+operations (add_questions/unattempted/record_attempt/domain_stats) calls
+`load()` itself before acting (and `save()` after, if it mutated) - state
+always comes fresh from disk rather than trusting whatever another
+process wrote in the meantime, and callers never need to remember to
+load/save themselves. `load()`/`save()` stay public for tests and any
+caller that genuinely wants manual control.
 """
 
 import json
@@ -36,14 +38,17 @@ class Bank:
             json.dump(self.questions, f, ensure_ascii=False, indent=2)
 
     def add_questions(self, questions: list[Question]) -> None:
+        self.load()
         now = datetime.now(timezone.utc).isoformat()
         for q in questions:
             q["id"] = uuid.uuid4().hex[:12]
             q["created_at"] = now
             q["attempts"] = []
         self.questions.extend(questions)
+        self.save()
 
     def unattempted(self, domain: str | None = None) -> list[Question]:
+        self.load()
         return [
             q
             for q in self.questions
@@ -51,6 +56,7 @@ class Bank:
         ]
 
     def record_attempt(self, qid: str, given_indices: list[int], correct: bool) -> None:
+        self.load()
         for q in self.questions:
             if q["id"] == qid:
                 q["attempts"].append(
@@ -60,10 +66,12 @@ class Bank:
                         "correct": correct,
                     }
                 )
+                self.save()
                 return
         raise KeyError(f"question id not found in bank: {qid}")
 
     def domain_stats(self) -> dict[str, dict[str, int]]:
+        self.load()
         stats: dict[str, dict[str, int]] = {}
         for q in self.questions:
             d = stats.setdefault(q["domain"], {"total": 0, "attempted": 0, "correct": 0})

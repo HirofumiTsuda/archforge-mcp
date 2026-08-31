@@ -38,14 +38,14 @@
 
 **依存**: なし。ユーザーから見える挙動（DoD）は変わらない純粋な内部リファクタリング
 
-**目的**: ストーリー1・2の実装で、`add_questions`/`unattempted`ツールがどちらも`current = bank.load_bank()` → 操作 → `bank.save_bank(current)`という同じ手順を毎回書く必要があった。今後のツール（`record_attempt`/`domain_stats`）でも同じ形が繰り返されるので、`Bank`に`self.questions`を持たせて状態を内包させ、呼び出し側が`current`を毎回持ち回さなくて済むようにする。
+**目的**: ストーリー1・2の実装で、`add_questions`/`unattempted`ツールがどちらも`current = bank.load_bank()` → 操作 → `bank.save_bank(current)`という同じ手順を毎回書く必要があった。`Bank`に`self.questions`を持たせて`current`の持ち回しは無くしたが、それだけだと今度は`bank.load()` → 操作 → `bank.save()`という手順が呼び出し側（`server.py`/`practice.py`）に残ってしまう。これも`Bank`側に隠蔽し、呼び出し側は`bank.add_questions(...)`/`bank.unattempted(...)`のように操作を呼ぶだけで済むようにする（load/saveの存在を意識しなくてよい）。
 
-**DoD**: `Bank`のメソッドが`load()`/`save()`/`add_questions(questions)`/`unattempted(domain=None)`/`record_attempt(qid, given_indices, correct)`/`domain_stats()`という、引数に`bank`/`current`のリストを取らないシグネチャになる。既存の全自動テスト（`test_bank.py`/`test_practice.py`/`test_server.py`）が新APIに合わせて書き直された上でパスし、実機の`data/bank.json`に対しても`add_questions`→`unattempted`が変わらず動くことを確認する。
+**DoD**: `Bank`の4操作（`add_questions`/`unattempted`/`record_attempt`/`domain_stats`）が、それぞれ自分の中で`load()`を呼んでから処理し（`add_questions`/`record_attempt`は処理後に`save()`も呼ぶ）、呼び出し側は`load()`/`save()`を明示的に呼ぶ必要が無い。`load()`/`save()`自体はテストなど手動制御したい場合のために公開メソッドとして残す。既存の全自動テスト（`test_bank.py`/`test_practice.py`/`test_server.py`）が新APIに合わせて書き直された上でパスし、実機の`data/bank.json`に対しても`add_questions`→`unattempted`が変わらず動くことを確認する。
 
-- [x] `bank.py`: `Bank.__init__`で`self.questions: list[Question] = []`を持たせ、各メソッドをステートフルな形に書き換える（`load_bank`→`load`、`save_bank`→`save`も改名）
-- [x] `server.py`: `add_questions`/`unattempted`ツールを新APIに合わせて書き換え（`bank.load()` → 操作 → `bank.save()`、`current`の受け渡しを削除）
-- [x] `practice.py`: `run_practice`を新APIに合わせて書き換え
-- [x] `test_bank.py`/`test_practice.py`/`test_server.py`を新APIに合わせて書き直す（`test_server.py`は複数テストで同じモジュール単位の`bank`を共有するため、`_isolated_bank`フィクスチャで`bank_path`の差し替えだけでなく`bank.load()`による状態リセットも行う）
+- [x] `bank.py`: `Bank.__init__`で`self.questions: list[Question] = []`を持たせ、`add_questions`/`unattempted`/`record_attempt`/`domain_stats`の内部冒頭で`self.load()`を呼び、`add_questions`/`record_attempt`は処理後に`self.save()`も呼ぶ（`load_bank`→`load`、`save_bank`→`save`も改名。`load`/`save`自体は公開メソッドのまま残す）
+- [x] `server.py`: `add_questions`/`unattempted`ツールから明示的な`bank.load()`/`bank.save()`呼び出しを削除（`bank.add_questions(...)`/`bank.unattempted(...)`を呼ぶだけに）
+- [x] `practice.py`: `run_practice`から明示的な`bank.load()`/`bank.save()`呼び出しを削除
+- [x] `test_bank.py`/`test_practice.py`/`test_server.py`を新APIに合わせて書き直す（`test_server.py`の`_isolated_bank`フィクスチャは`bank_path`の差し替えのみでよくなった。各操作が自分で`load()`するため、モジュール単位で共有される`bank`インスタンスの前テストの残留状態が漏れ込む心配がない）
 - [x] `uv run pytest`で全30件がパスすることを確認
 - [x] 手動確認: 実際の`data/bank.json`に対して`add_questions`→`unattempted`を実行し、リファクタリング前と同じ結果になることを確認
 
