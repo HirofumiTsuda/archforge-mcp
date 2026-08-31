@@ -66,3 +66,50 @@ async def test_add_questions_rejects_unknown_field():
             await client.call_tool("add_questions", {"questions": [bad_question]})
 
     assert bank.load_bank() == []
+
+
+async def test_unattempted_returns_questions_with_correct_indices():
+    seeded = bank.add_questions([], [make_question()])
+    bank.save_bank(seeded)
+
+    async with Client(mcp) as client:
+        result = await client.call_tool("unattempted", {})
+
+    assert len(result.data) == 1
+    assert result.data[0]["correct_indices"] == [0]
+
+
+async def test_unattempted_excludes_already_attempted_questions():
+    seeded = bank.add_questions([], [make_question(), make_question()])
+    bank.record_attempt(seeded, seeded[0]["id"], [0], True)
+    bank.save_bank(seeded)
+
+    async with Client(mcp) as client:
+        result = await client.call_tool("unattempted", {})
+
+    assert len(result.data) == 1
+    assert result.data[0]["id"] == seeded[1]["id"]
+
+
+async def test_unattempted_filters_by_domain():
+    seeded = bank.add_questions(
+        [],
+        [
+            make_question(domain="Tool Design & MCP Integration"),
+            make_question(domain="Context Management & Reliability"),
+        ],
+    )
+    bank.save_bank(seeded)
+
+    async with Client(mcp) as client:
+        result = await client.call_tool("unattempted", {"domain": "Tool Design & MCP Integration"})
+
+    assert len(result.data) == 1
+    assert result.data[0]["domain"] == "Tool Design & MCP Integration"
+
+
+async def test_unattempted_returns_empty_list_when_bank_is_empty():
+    async with Client(mcp) as client:
+        result = await client.call_tool("unattempted", {})
+
+    assert result.data == []
